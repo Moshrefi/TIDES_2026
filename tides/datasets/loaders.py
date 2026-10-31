@@ -58,10 +58,72 @@ def _tum_to_w2c(arr):
 # <root>/calib.yaml (kalibr: cam0 = RGB, cam1 = event camera)
 # ============================================================================
 
+def load_npy_layout(root: str, seq: str, dataset: str = "npy") -> Sequence:
+    """Pre-processed layout (e.g. the EvTween copy of EDS):
+
+    <seq>/frames/*.png, frame_ts.npy, ev_t.npy, ev_x.npy, ev_y.npy, ev_p.npy [, align.yaml]
+
+    Events are assumed to be already aligned to the frames' pixel grid. There
+    are no poses or intrinsics: pass --colmap (or --intrinsics + --poses) to
+    prepare_scene.py.
+    """
+    from PIL import Image
+
+    d = os.path.join(root, seq)
+    img_dir = next((p for p in [os.path.join(d, "frames"), os.path.join(d, "images")] if os.path.isdir(p)), None)
+    if img_dir is None:
+        raise FileNotFoundError(_layout_error(d, "no frames/ folder"))
+    frames = sorted_images(img_dir)
+    ft = to_seconds(np.load(os.path.join(d, "frame_ts.npy")).reshape(-1))
+    n = min(len(ft), len(frames))
+    if len(ft) != len(frames):
+        print(f"[npy loader] {len(ft)} timestamps vs {len(frames)} frames; using the first {n}")
+    frames, ft = frames[:n], ft[:n]
+    t_origin = float(ft[0])
+    W, H = Image.open(frames[0]).size
+    align = None
+    if os.path.exists(os.path.join(d, "align.yaml")) and yaml:
+        with open(os.path.join(d, "align.yaml")) as f:
+            align = yaml.safe_load(f)
+    ev_t_raw = np.load(os.path.join(d, "ev_t.npy"), mmap_mode="r")
+    # decide the event time unit once, from the span relative to the frames
+    span = float(ev_t_raw[-1]) - float(ev_t_raw[0])
+    frame_span = ft[-1] - ft[0]
+    scale = 1.0
+    for s_ in (1.0, 1e-3, 1e-6, 1e-9):
+        if 0.2 * frame_span <= span * s_ <= 5 * frame_span + 1.0:
+            scale = s_
+            break
+    ev_off = 0.0
+    # events may share the frames' clock or start at zero
+    if abs(float(ev_t_raw[0]) * scale - t_origin) > 10 * frame_span and abs(float(ev_t_raw[0]) * scale) < frame_span:
+        ev_off = t_origin
+        print("[npy loader] event timestamps look relative; assuming they start with the first frame")
+
+    def loader(t0, t1):
+        tt = np.load(os.path.join(d, "ev_t.npy"), mmap_mode="r")
+        a0 = (t0 + t_origin - ev_off) / scale
+        a1 = (t1 + t_origin - ev_off) / scale
+        i0, i1 = np.searchsorted(tt, [a0, a1])
+        t = np.asarray(tt[i0:i1], dtype=np.float64) * scale + ev_off - t_origin
+        x = np.asarray(np.load(os.path.join(d, "ev_x.npy"), mmap_mode="r")[i0:i1]).astype(np.int32)
+        y = np.asarray(np.load(os.path.join(d, "ev_y.npy"), mmap_mode="r")[i0:i1]).astype(np.int32)
+        p = np.where(np.asarray(np.load(os.path.join(d, "ev_p.npy"), mmap_mode="r")[i0:i1]) > 0, 1, -1).astype(np.int8)
+        ok = (x >= 0) & (x < W) & (y >= 0) & (y < H)
+        return dict(t=t[ok], x=x[ok], y=y[ok], p=p[ok])
+
+    return Sequence(dataset, seq, frames, ft - t_origin, t_origin, None, None, np.eye(4), None, loader, (H, W),
+                    notes=f"npy layout; events assumed aligned to frames; event time scale {scale}; align.yaml={align}")
+
+
 def load_eds(root: str, seq: str, gt_pose_frame: str = "rgb") -> Sequence:
     import h5py
 
     d = os.path.join(root, seq)
+    if os.path.exists(os.path.join(d, "frame_ts.npy")) and os.path.exists(os.path.join(d, "ev_t.npy")):
+        s = load_npy_layout(root, seq, dataset="eds")
+        print("[eds] pre-processed .npy layout detected (no calib.yaml / ground-truth poses here)")
+        return s
     if not os.path.isdir(d):
         raise FileNotFoundError(f"EDS sequence folder not found: {d}")
     img_dir = next((p for p in [os.path.join(d, "images"), os.path.join(d, "frames"), d] if os.path.isdir(p) and sorted_images(p)), None)
