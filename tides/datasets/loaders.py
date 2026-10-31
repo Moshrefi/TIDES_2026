@@ -139,7 +139,14 @@ def load_eds(root: str, seq: str, gt_pose_frame: str = "rgb") -> Sequence:
     assert len(ft) == len(frames), f"{len(ft)} timestamps vs {len(frames)} images"
     t_origin = float(ft[0])
 
-    calib_path = next((p for p in [os.path.join(d, "calib.yaml"), os.path.join(root, "calib.yaml")] if os.path.exists(p)), None)
+    calib_cands = [os.path.join(d, "calib.yaml"), os.path.join(root, "calib.yaml")]
+    for base in (d, root, os.path.dirname(os.path.abspath(root))):
+        calib_cands += sorted(glob.glob(os.path.join(base, "*camchain*.yaml")) + glob.glob(os.path.join(base, "*calib*", "*camchain*.yaml")))
+    if os.environ.get("TIDES_EDS_CALIB"):
+        calib_cands.insert(0, os.environ["TIDES_EDS_CALIB"])
+    calib_path = next((p for p in calib_cands if os.path.exists(p)), None)
+    if calib_path:
+        print(f"[eds] calibration: {calib_path}")
     rgb = ev_cal = None
     T = np.eye(4)
     if calib_path and yaml:
