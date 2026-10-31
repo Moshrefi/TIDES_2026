@@ -25,6 +25,20 @@ def _read_txt_column(path, col=0, comments="#"):
     return a[:, col]
 
 
+def _layout_error(d, what):
+    """Readable error showing what is actually in the sequence folder."""
+    lines = [f"{what}. Contents of {d}:"]
+    for name in sorted(os.listdir(d))[:40]:
+        p = os.path.join(d, name)
+        if os.path.isdir(p):
+            sub = sorted(os.listdir(p))
+            lines.append(f"  {name}/  ({len(sub)} entries, e.g. {sub[:3]})")
+        else:
+            lines.append(f"  {name}")
+    lines.append("Please send this listing so the loader can be adapted.")
+    return "\n".join(lines)
+
+
 def _tum_to_w2c(arr):
     """TUM rows (t, tx, ty, tz, qx, qy, qz, qw), camera-to-world -> (R_wc, t_wc)."""
     from ..camera import quat_to_rotmat
@@ -48,8 +62,17 @@ def load_eds(root: str, seq: str, gt_pose_frame: str = "rgb") -> Sequence:
     import h5py
 
     d = os.path.join(root, seq)
-    frames = sorted_images(os.path.join(d, "images"))
-    ts_file = next(p for p in [os.path.join(d, "images_timestamps.txt"), os.path.join(d, "images", "timestamps.txt")] if os.path.exists(p))
+    if not os.path.isdir(d):
+        raise FileNotFoundError(f"EDS sequence folder not found: {d}")
+    img_dir = next((p for p in [os.path.join(d, "images"), os.path.join(d, "frames"), d] if os.path.isdir(p) and sorted_images(p)), None)
+    if img_dir is None:
+        raise FileNotFoundError(_layout_error(d, "no image folder (expected <seq>/images/*.png)"))
+    frames = sorted_images(img_dir)
+    ts_cands = [os.path.join(d, "images_timestamps.txt"), os.path.join(img_dir, "timestamps.txt")]
+    ts_cands += sorted(glob.glob(os.path.join(d, "*timestamp*.txt")) + glob.glob(os.path.join(img_dir, "*timestamp*.txt")))
+    ts_file = next((p for p in ts_cands if os.path.exists(p)), None)
+    if ts_file is None:
+        raise FileNotFoundError(_layout_error(d, "no frame timestamp file (expected <seq>/images_timestamps.txt)"))
     ft = to_seconds(_read_txt_column(ts_file, -1 if np.loadtxt(ts_file, ndmin=2).shape[1] > 1 else 0))
     assert len(ft) == len(frames), f"{len(ft)} timestamps vs {len(frames)} images"
     t_origin = float(ft[0])
@@ -83,6 +106,11 @@ def load_eds(root: str, seq: str, gt_pose_frame: str = "rgb") -> Sequence:
         gt = (a[:, 0], R_wc, t_wc)
 
     ev_path = os.path.join(d, "events.h5")
+    if not os.path.exists(ev_path):
+        h5s = sorted(glob.glob(os.path.join(d, "*.h5")) + glob.glob(os.path.join(d, "*", "*.h5")))
+        if not h5s:
+            raise FileNotFoundError(_layout_error(d, "no events .h5 file (expected <seq>/events.h5)"))
+        ev_path = h5s[0]
     K_ev = ev_cal.K if ev_cal else None
 
     def loader(t0, t1):
