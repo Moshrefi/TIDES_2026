@@ -1,0 +1,27 @@
+# Baselines are fed the shared 4DGS renders at frame_interval * fraction.
+fraction: 0.1          # fixed 10x budget, same as TIDES (10x)
+log_eps: 1.0e-3
+esim:
+  c_pos: 0.2
+  c_neg: 0.2
+  refractory_s: 0.0
+v2e:                   # v2e command-line defaults
+  pos_thres: 0.2
+  neg_thres: 0.2
+  sigma_thres: 0.03
+  cutoff_hz: 300.0
+  leak_rate_hz: 0.01
+  shot_noise_rate_hz: 0.001
+dvs_voltmeter:
+  camera_type: DVS346
+iebcs:                 # values from the IEBCS video example, thresholds matched to the others
+  c_pos: 0.2
+  c_neg: 0.2
+  th_noise: 0.01
+  lat: 100
+  jit: 10
+  ref: 100
+  tau: 40
+  bgnp: 0.1
+  bgnn: 0.01
+  lux: 10000.0

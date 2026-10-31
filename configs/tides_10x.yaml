@@ -1,0 +1,34 @@
+# TIDES, fixed 10x query budget (Table 1/2 row "TIDES (10x)").
+# Values the paper does not state are our defaults; see docs/assumptions.md.
+slope: analytic
+comparator:
+  c_pos: 0.2
+  c_neg: 0.2
+  c_sigma: 0.0
+  n_max: 8
+  model: quadratic
+  leak_rate: 0.0
+  catchup: emit
+  seed: 0
+sensor:
+  psf_sigma: 0.0
+  surround_sigma: 0.0
+  surround_gain: 0.0
+  lowpass_tau: 0.0
+adaptive:
+  enabled: false
+  fixed_fraction: 0.1      # 10 queries per frame interval
+  b_min: 0.05
+  use_mask: true
+readout:
+  enabled: true
+  tile: 32
+  tick: 1.0e-6
+  K0: 4
+  p0: 0.0
+  sigma0: 1.0e-6
+  beta_K: 0.5
+  eta: 0.05
+  gamma_sigma: 1.0e-5
+  c_ref: 32.0
+  seed: 0

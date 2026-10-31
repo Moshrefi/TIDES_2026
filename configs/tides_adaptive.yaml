@@ -1,0 +1,17 @@
+# TIDES with risk-guided adaptive stepping (Table 1/2 row "TIDES (adaptive)", Table 4 "Full TIDES").
+inherit: tides_10x.yaml
+adaptive:
+  enabled: true
+  base_fraction: 0.25      # coarse step = 1/4 frame interval, refined down to 1/64
+  min_fraction: 0.015625
+  rate_control: true
+  max_crossings: 4.0
+  rate_quantile: 0.99
+  use_risk: true
+  use_alpha_cue: true
+  w_b: 0.3333333
+  w_c: 0.3333333
+  w_a: 0.3333333
+  c_ref: 32.0
+  k: 7.0
+  quantile: 0.99

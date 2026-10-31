@@ -1,0 +1,10 @@
+# Table 4 rows as overrides on top of tides_adaptive.yaml (EDS scenes).
+full: []
+finite_diff_slope: ["slope=finite_difference"]
+no_multi_crossing: ["comparator.n_max=1"]
+fixed_step: ["adaptive.rate_control=false", "adaptive.use_risk=false"]
+no_risk_refinement: ["adaptive.use_risk=false"]
+no_mixed_visibility_masking: ["adaptive.use_mask=false"]
+no_alpha_cue: ["adaptive.use_alpha_cue=false"]
+no_readout: ["readout.enabled=false"]
+compute_matched: ["adaptive.enabled=false"]   # fixed_fraction is set from the full run's query count

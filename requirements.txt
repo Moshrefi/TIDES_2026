@@ -1,0 +1,11 @@
+# TIDES core (install PyTorch matching your CUDA first: https://pytorch.org)
+torch>=2.1
+numpy
+scipy
+h5py
+pyyaml
+opencv-python
+pillow
+numba
+pytest
+# 4DGS (third_party/4DGaussians) needs its own requirements + CUDA extensions; see scripts/setup_third_party.sh

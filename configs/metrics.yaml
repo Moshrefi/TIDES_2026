@@ -1,0 +1,21 @@
+# Metric settings (the paper's supplement defines these; ours are documented guesses).
+ig_nll:
+  unit: 1.0e-3        # ISIs in milliseconds
+  variant: excess     # NLL(real|IG_sim) - NLL(real|IG_real); "raw" for the plain NLL
+  by_polarity: false
+chamfer:
+  window: 0.05        # seconds
+  voxel: [1.0, 1.0, 1.0]
+  normalize: diag     # divide by image diagonal
+  v: auto             # px/s; auto = median projected Gaussian speed of the scene
+same_ts:
+  window: 0.05
+  resolution: 1.0e-6
+isi_spike:
+  zero_thresh: 5.0e-6
+  bin_size: 1.0e-6
+  max_isi: 0.05
+  peak_factor: 5.0
+fano:
+  tile: 8
+  dt: 0.01
