@@ -19,25 +19,28 @@ def build():
     base = runpy.run_path(str(ROOT/'scripts'/'build_eds_notebook.py'))
     cells = copy.deepcopy(base['CELLS'])
     cells[0]['source'] = source('''
-    # آموزش 4DGS و ارزیابی TIDES روی کل سکانس EDS
+    # Full-sequence EDS: 4DGS training and TIDES evaluation
 
-    این نوت‌بوک جدا برای کل `00_peanuts_dark` است، نه کلیپ ۱٫۵ثانیه‌ای.
-    فایل را در پوشه `notebooks` مخزن `TIDES_2026` روی سرور بگذارید، کرنل **Python (tides)**
-    را انتخاب کنید و **Run All** بزنید. سلول اول کد شامل مسیرهای شماست؛ نیازی به افزودن سلول نیست.
+    This separate notebook runs the full `00_peanuts_dark` sequence rather than the 1.5-second clip.
+    Place it in the `notebooks` directory of the server's `TIDES_2026` checkout, select the
+    **Python (tides)** kernel, and choose **Run All**. The first code cell contains the server paths;
+    no additional configuration cell is needed.
 
-    **Run All آماده‌سازی و سپس آموزش واقعی GPU را شروع می‌کند**؛ پس از آن شبیه‌سازی و ارزیابی
-    دو حالت TIDES اجرا می‌شوند. baselineها و ablationها در این اجرا انتخاب نشده‌اند.
-    خروجی جداگانه در `work/eds/00_peanuts_dark_full` ذخیره می‌شود.
-    اگر صحنه کامل از قبل آماده باشد دوباره ساخته نمی‌شود؛ چک‌پوینت کامل نیز دوباره آموزش نمی‌بیند.
-    خروجی ناقص خودکار حذف یا بازنویسی نمی‌شود.
+    **Run All starts scene preparation followed by actual GPU training**, then simulation and
+    evaluation of both TIDES variants. Baselines and ablations are not selected in this run.
+    Outputs are stored separately in `work/eds/00_peanuts_dark_full`.
+    An existing prepared full scene is reused, and a complete checkpoint is not retrained.
+    Incomplete outputs are not automatically deleted or overwritten.
 
-    همه فریم‌های داخل بازه پوز معتبر، با stride=1 انتخاب می‌شوند؛ محدودیت ۱٫۵ ثانیه و سقف ۶۰۰
-    فریم وجود ندارد. تفکیک قبلی آموزش/ارزیابی و تنظیمات ۳۰۰۰ coarse + ۱۴۰۰۰ fine حفظ شده‌اند.
-    نتیجه هنوز مربوط به یک سکانس است و معادل میانگین کل EDS مقاله نیست.
-    قرارداد GT=RGB و وضعیت flip همان فرض‌های ثبت‌شده قبلی هستند؛ تغییر خودکاری در آن‌ها نمی‌دهیم.
+    All frames within the valid ground-truth pose interval are selected with stride=1;
+    neither the 1.5-second limit nor the 600-frame cap is applied. The existing train/test split
+    and the 3000 coarse + 14000 fine training iterations are preserved.
+    Results still describe one sequence and are not equivalent to the paper's full EDS averages.
+    The GT=RGB convention and image-flip status retain the previously recorded assumptions;
+    no automatic change is made to either.
     ''')
     first = dict(cell_type='code',metadata={},execution_count=None,outputs=[],source=source('''
-    # تنظیمات از قبل برای سرور شما؛ اجرای سلول‌های اصلی نیاز به export ترمینال ندارد.
+    # Server settings are prefilled; no terminal environment exports are required.
     import os
     os.environ['TIDES_EDS_ROOT'] = '/u/marmary/evtween/EDS/EDS'
     os.environ['TIDES_EDS_CALIB'] = '/u/marmary/evtween/EDS/calib/00_calib/camchain-mediajaviJAVISdatasetshwdscalibratione2kalibr.yaml'
@@ -64,20 +67,21 @@ def build():
             c['source'] = source(text)
         if c['cell_type']=='markdown' and '## 1. Original EDS paths' in text:
             c['source'] = source('''
-            ## 1. مسیرهای آماده و پیش‌نیازها
+            ## 1. Prefilled paths and prerequisites
 
-            مسیر checkout قبلی 4DGaussians و حالت reverse از قبل تنظیم شده‌اند.
-            هیچ وابستگی‌ای خودکار نصب نمی‌شود. صحنه کوتاه قبلی در پوشه دیگری باقی می‌ماند.
-            این نوت‌بوک به همان اسکریپت‌های اصلاح‌شده مخزن نیاز دارد (کامیت 8f612d9 یا نسخه بعد از آن).
+            The existing 4DGaussians checkout and reverse-mode derivatives are already selected.
+            Dependencies are not installed automatically. The previous short scene remains in its own folder.
+            This notebook requires the corrected repository scripts from commit 8f612d9 or later.
             ''')
         if c['cell_type']=='markdown' and '## 2. Inspect, prepare' in text:
             c['source'] = source('''
-            ## 2. آماده‌سازی کل سکانس و کنترل پوشش فریم‌ها
+            ## 2. Prepare the full sequence and verify frame coverage
 
-            آماده‌سازی بدون t-end و با سقف sys.maxsize اجرا می‌شود. بعد از آماده‌سازی، بازه زمانی
-            از tides_meta.json خوانده می‌شود؛ همان کاری که سلول تنظیمات دستی قرار بود انجام دهد،
-            اما اینجا پس از ساخته‌شدن فایل اجرا می‌شود. تعداد و زمان فریم‌ها با کل بازه معتبر دیتاست
-            مقایسه می‌شود تا صحنه کوتاه یا آماده‌سازی ناقص به‌اشتباه به عنوان اجرای کامل استفاده نشود.
+            Preparation runs without t-end and with sys.maxsize as the frame cap. After preparation,
+            the actual time range is read from tides_meta.json. This replaces the earlier manual
+            configuration step and runs only after the metadata file exists.
+            Frame counts and timestamps are checked against the entire valid dataset interval so that
+            a short scene or incomplete preparation cannot be mistaken for full-sequence coverage.
             ''')
         if c['cell_type']=='code' and 'def check_scene():' in text:
             prefix = '''
