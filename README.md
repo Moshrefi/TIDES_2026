@@ -9,8 +9,8 @@ two compositing diagnostics) in the same front-to-back order as the image, and s
 times in continuous time.
 
 > **Expectations.** This code follows the paper's equations, but the paper leaves its metric definitions,
-> sequence lists and about 30 constants to a supplementary file we do not have. Expect the same *ranking* and
-> trends as the paper; exact numbers will differ. Every guessed value is listed in
+> sequence lists and about 30 constants to a supplementary file we do not have. Matching rankings,
+> trends, or exact numbers has not been validated. Every guessed value is listed in
 > [docs/assumptions.md](docs/assumptions.md) and is a config option.
 
 ## What is implemented
@@ -76,12 +76,19 @@ for `make_tables.py` to average per dataset.
 
 ## Notes on fidelity to the paper
 
-* The rasterizer reproduces the 3DGS CUDA rasterizer's decisions (16x16 tiles, 3-sigma rectangles, per-tile depth
-  order, α ≥ 1/255, α ≤ 0.99, early stop at T < 1e-4) so the primal image equals what the 4DGS scene was trained
-  with; `tests/test_core.py` checks it against a per-pixel brute-force reference.
-* L̇ and α̇ are checked against central finite differences of the primal render.
-* It is a pure PyTorch tile rasterizer, not a custom CUDA kernel. It is slower than the paper's renderer but gives
-  the same values; use `--chunk` to trade memory for speed.
+* The rasterizer implements 3DGS-style rules (16x16 tiles, 3-sigma rectangles, per-tile depth
+  order, alpha cutoff/clamping, early stop). `tests/test_core.py` compares against a repository
+  brute-force reference; this does not establish numerical parity with upstream CUDA renders.
+* Derivative tests compare L-dot and alpha-dot against central finite differences of repository renders.
+* The renderer uses a pure PyTorch tile rasterizer. Upstream GPU render parity and paper-level
+  fidelity remain unvalidated; use `--chunk` to trade memory for speed.
 * Seeds: comparator jitter and arbiter drops are seeded (`--seed`). Run 3 seeds and report mean ± std.
 
 See [docs/assumptions.md](docs/assumptions.md) for every value the paper does not specify.
+
+## Original EDS notebook audit
+
+Use [the audited EDS guide](docs/eds_reproduction_audit.md) for the original archive,
+explicit calibration, a read-only geometry/time audit, and safe notebook stage controls.
+Regenerate the notebook with `python scripts/build_eds_notebook.py`; verify it with
+`python scripts/build_eds_notebook.py --check`. All notebook execution stages default to off.

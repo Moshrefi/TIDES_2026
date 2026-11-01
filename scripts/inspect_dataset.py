@@ -20,10 +20,13 @@ def main():
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--root", required=True)
     ap.add_argument("--seq", required=True)
+    ap.add_argument("--calib", default=None, help="explicit EDS Kalibr YAML")
+    ap.add_argument("--gt-pose-frame", choices=["rgb", "event"], default="rgb")
     ap.add_argument("--seconds", type=float, default=0.5)
     ap.add_argument("--png", default=None, help="write an event frame for visual alignment checks")
     args = ap.parse_args()
-    s = load_sequence(args.dataset, args.root, args.seq)
+    kw = dict(calib_path=args.calib, gt_pose_frame=args.gt_pose_frame) if args.dataset == "eds" else {}
+    s = load_sequence(args.dataset, args.root, args.seq, **kw)
     print(f"{s.dataset}/{s.name}: {len(s.frame_paths)} frames, {s.frame_times[0]:.3f}..{s.frame_times[-1]:.3f}s, "
           f"median dt {np.median(np.diff(s.frame_times)) * 1e3:.2f} ms")
     print("rgb calib:", s.rgb)

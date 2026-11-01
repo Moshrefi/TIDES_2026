@@ -45,9 +45,11 @@ def main():
     ap.add_argument("--out", default="results/tables.md")
     args = ap.parse_args()
     agg = collect(args.work_root)
-    lines = ["# Reproduced tables (ours / paper)", "",
+    lines = ["# Independent implementation results (ours / paper reference)", "",
              "Each cell is `ours / paper`. Ours is the mean over the sequences we ran (n in brackets).", ""]
 
+    lines += ["These are available-run means, not validated paper reproductions. Sequence coverage,",
+              "time windows, seeds, and metric definitions must match before direct comparison.", ""]
     lines += ["## Table 1: event fidelity (IG-NLL, Chamfer; lower is better)", ""]
     hdr = "| Simulator | " + " | ".join(f"{LABELS[d]} IG-NLL | {LABELS[d]} Chamfer" for d in DATASETS) + " |"
     lines += [hdr, "|" + "---|" * (1 + 2 * len(DATASETS))]

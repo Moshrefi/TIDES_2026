@@ -52,7 +52,11 @@ def main():
     t0 = args.t_start if args.t_start is not None else meta["t_range"][0]
     t1 = args.t_end if args.t_end is not None else meta["t_range"][1]
     dt = meta["frame_interval"] * cfg.get("fraction", 0.1)
-    times = np.arange(t0, t1 + 1e-9, dt)
+    if not (meta["t_range"][0] <= t0 < t1 <= meta["t_range"][1]):
+        raise ValueError("Requested interval is outside the prepared scene")
+    times = np.arange(t0, t1, dt)
+    # Feed the endpoint too, so every baseline covers the declared scoring window.
+    times = np.append(times, t1)
     frames = []
     tic = time.time()
     for i, t in enumerate(times):

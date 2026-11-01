@@ -17,6 +17,7 @@ Examples:
       --colmap /data/easi3r_out/spinning_umbrella/sparse/0 --out work/hsergb/spinning_umbrella
 """
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -105,6 +106,8 @@ def main():
     ap.add_argument("--root", required=True)
     ap.add_argument("--seq", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--calib", default=None, help="explicit EDS Kalibr YAML; persisted for evaluation")
+    ap.add_argument("--seed", type=int, default=0, help="random point initialisation seed")
     ap.add_argument("--colmap", default=None)
     ap.add_argument("--poses", default=None, help="TUM file (c2w) for the RGB camera")
     ap.add_argument("--intrinsics", default=None, help="fx,fy,cx,cy of the RGB frames if the dataset has none")
@@ -123,9 +126,25 @@ def main():
 
     import cv2
 
-    kw = {"gt_pose_frame": args.gt_pose_frame} if args.dataset == "eds" else {}
+    if args.stride < 1 or args.max_frames < 2:
+        ap.error("--stride must be positive and --max-frames must be at least two")
+    if args.calib and args.dataset != "eds":
+        ap.error("--calib is currently supported only for EDS")
+    # Re-preparation into an existing scene can leave stale images / binary models
+    # and silently change the scene underneath a trained checkpoint.
+    scene_path = os.path.join(args.out, "scene")
+    if os.path.exists(scene_path) and os.listdir(scene_path):
+        raise FileExistsError(f"Refusing to replace prepared scene: {scene_path}; use a new --out")
+    kw = {"gt_pose_frame": args.gt_pose_frame, "calib_path": args.calib} if args.dataset == "eds" else {}
     seq = load_sequence(args.dataset, args.root, args.seq, **kw)
+    if args.dataset == "eds" and (seq.rgb is None or seq.event is None):
+        raise ValueError("Original EDS preparation requires RGB + event calibration; pass --calib. "
+                         "The preprocessed EvTween layout is not this calibrated workflow.")
+    if seq.calibration_path:
+        kw["calib_path"] = seq.calibration_path
     ft = seq.frame_times
+    if not np.isfinite(ft).all() or len(ft) < 2 or not np.all(np.diff(ft) > 0):
+        raise ValueError("Frame timestamps must be finite and strictly increasing")
     t_end = args.t_end if args.t_end is not None else ft[-1]
     sel = np.nonzero((ft >= args.t_start) & (ft <= t_end))[0][:: args.stride][: args.max_frames]
     assert len(sel) >= 2, "need at least two frames in the selected range"
@@ -178,6 +197,9 @@ def main():
             print(f"[prepare] dropping {np.sum(~inside)} frames outside the ground-truth time range")
             sel, R_wc, t_wc = sel[inside], R_wc[inside], t_wc[inside]
 
+    if len(sel) < 2:
+        raise ValueError("Need at least two frames inside the pose time range")
+
     # ---- undistort + centre the principal point (4DGS assumes cx = (W-1)/2) ---
     W, H = K_rgb.width, K_rgb.height
     hx = int(np.floor(min(K_rgb.cx, W - 1 - K_rgb.cx)))
@@ -198,15 +220,18 @@ def main():
     imgs_rgb = []
     for k, i in enumerate(sel):
         im = cv2.imread(seq.frame_paths[i], cv2.IMREAD_COLOR)
+        if im is None:
+            raise ValueError(f"Could not read image: {seq.frame_paths[i]}")
         if im.shape[1] != W or im.shape[0] != H:
-            im = cv2.resize(im, (W, H), interpolation=cv2.INTER_AREA)
+            raise ValueError(f"Image {seq.frame_paths[i]} has shape {im.shape[:2]}, "
+                             f"calibration requires {(H, W)}; check camera / calibration selection")
         und = cv2.remap(im, m1, m2, cv2.INTER_LINEAR)
         cv2.imwrite(os.path.join(out_scene, "images", f"{k:06d}.png"), und)
         if k % max(1, len(sel) // 20) == 0:
             imgs_rgb.append((k, und[:, :, ::-1]))
 
     # ---- points: COLMAP points or random points in the camera frusta ----------
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(args.seed)
     if pts is None or len(pts) < 100:
         n = args.n_random_points
         P = []
@@ -267,6 +292,11 @@ def main():
         poses=dict(times_s=frame_times.tolist(), R_wc=R_wc.tolist(), t_wc=t_wc.tolist()),
         background=list(args.background), notes=seq.notes,
         loader_kwargs=kw,
+        preparation=dict(seed=args.seed, stride=args.stride, requested_range=[args.t_start, args.t_end],
+                         pose_convention="world_to_camera_opencv", scene_time_convention="colmap_index_over_count",
+                         gt_pose_frame=args.gt_pose_frame if args.dataset == "eds" else None),
+        calibration_sha256=(hashlib.sha256(open(seq.calibration_path, "rb").read()).hexdigest()
+                            if seq.calibration_path else None),
     )
     with open(os.path.join(args.out, "tides_meta.json"), "w") as f:
         json.dump(meta, f, indent=1)

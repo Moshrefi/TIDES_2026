@@ -48,6 +48,8 @@ def main():
                              mode=args.tangent_mode, device=args.device, chunk=args.chunk)
     t0 = args.t_start if args.t_start is not None else meta["t_range"][0]
     t1 = args.t_end if args.t_end is not None else meta["t_range"][1]
+    if not (meta["t_range"][0] <= t0 < t1 <= meta["t_range"][1]):
+        raise ValueError("Requested interval is outside the prepared scene")
     sim = TidesSimulator(r, cfg, frame_interval=meta["frame_interval"])
     ev = sim.run(t0, t1)
 

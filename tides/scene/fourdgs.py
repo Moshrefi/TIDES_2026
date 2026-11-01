@@ -29,7 +29,11 @@ class TimeMap:
         self.ft = torch.tensor(np.asarray(frame_times_s, np.float64), device=device)
         self.ft32 = self.ft.float()
         self.st32 = torch.tensor(np.asarray(scene_times, np.float64), device=device).float()
-        assert len(self.ft) >= 2
+        if (self.ft.ndim != 1 or self.st32.shape != self.ft.shape or len(self.ft) < 2
+                or not torch.isfinite(self.ft).all() or not torch.isfinite(self.st32).all()
+                or not torch.all(self.ft[1:] > self.ft[:-1])
+                or not torch.all(self.st32[1:] > self.st32[:-1])):
+            raise ValueError("TimeMap requires matching finite, strictly increasing timestamps")
 
     @classmethod
     def from_json(cls, path, device="cpu"):

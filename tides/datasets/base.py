@@ -44,6 +44,7 @@ class Sequence:
     event_loader: object = None  # callable(t0_rel, t1_rel) -> event dict in event-camera pixels (undistorted)
     event_shape: tuple | None = None  # (H, W)
     notes: str = ""
+    calibration_path: str | None = None
 
     def load_events(self, t0: float, t1: float) -> dict:
         return self.event_loader(t0, t1)

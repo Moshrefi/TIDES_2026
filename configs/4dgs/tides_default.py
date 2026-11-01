@@ -1,5 +1,5 @@
 # 4DGS training config used for every TIDES scene (pass with --configs to the 4DGS train.py).
-# Same as 4DGS arguments/hypernerf/default.py (monocular dynamic scenes).
+# Repository-chosen settings inspired by HyperNeRF; not verified paper hyperparameters.
 # Temporal grid resolution: 4DGS recommends about half the number of training frames;
 # edit "resolution"[3] per sequence if you train on many more or fewer than ~300 frames.
 ModelHiddenParams = dict(
@@ -27,4 +27,14 @@ OptimizationParams = dict(
     coarse_iterations=3000,
     densify_until_iter=10000,
     opacity_reset_interval=300000,
+)
+
+# Explicit upstream settings. Boolean CLI options are store_true: do not pass
+# --eval False or --white_background False. Keep held-out views for diagnostics.
+ModelParams = dict(
+    white_background=True,
+    eval=True,
+    llffhold=8,
+    resolution=1,
+    render_process=False,
 )

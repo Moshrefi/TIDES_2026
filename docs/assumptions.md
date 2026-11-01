@@ -34,12 +34,15 @@ corrected once the supplement is available.
 
 ## 4DGS scene fitting
 
-* Upstream 4DGS (hustvl/4DGaussians) with its HyperNeRF config (`configs/4dgs/tides_default.py`), 14k iterations.
+* Upstream 4DGS (hustvl/4DGaussians) with repository-selected HyperNeRF-inspired settings (`configs/4dgs/tides_default.py`), 14k iterations.
 * 4DGS assumes a centred principal point, so `prepare_scene.py` undistorts and recentres the RGB frames. The
   simulator renders straight into the (undistorted) event camera, using the dataset's RGB→event extrinsics.
 * Frame *i* of *N* gets scene time i/N (what 4DGS's COLMAP reader does); seconds map to scene time piecewise
   linearly.
-* EDS ground-truth poses are read as RGB-camera poses (`--gt-pose-frame event` switches this).
+* EDS ground-truth poses are currently assumed to describe the RGB camera (`--gt-pose-frame event`
+  switches this). TUM c2w -> COLMAP w2c algebra is checked separately from this archive-specific assumption.
+  Physical GT frame identity and the cam0 YAML `flip: True` / stored-image orientation still need verification
+  against the user's original archive; no image flip is automatically applied.
 * Without a COLMAP point cloud, points are initialised randomly inside the camera frusta.
 
 ## Metrics

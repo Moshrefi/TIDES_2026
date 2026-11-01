@@ -26,9 +26,17 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--work", required=True)
     ap.add_argument("--fourdgs", required=True)
+    ap.add_argument("--fourdgs-config", default=os.path.join(HERE, "..", "configs", "4dgs", "tides_default.py"))
+    ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--only", nargs="*", default=None)
     ap.add_argument("--device", default="cuda")
     args = ap.parse_args()
+    original_run = run
+    def run_with_config(cmd):
+        cmd = list(cmd) + ["--fourdgs-config", args.fourdgs_config]
+        if cmd[1].endswith("simulate.py"):
+            cmd += ["--seed", str(args.seed)]
+        original_run(cmd)
 
     abl = yaml.safe_load(open(os.path.join(HERE, "..", "configs", "ablations.yaml")))
     base = os.path.join(HERE, "..", "configs", "tides_adaptive.yaml")
@@ -41,7 +49,7 @@ def main():
         if key == "compute_matched":
             full_info = os.path.join(args.work, "events", "tides_adaptive.json")
             if not os.path.exists(full_info):
-                run([sys.executable, os.path.join(HERE, "simulate.py"), "--work", args.work, "--fourdgs", args.fourdgs,
+                run_with_config([sys.executable, os.path.join(HERE, "simulate.py"), "--work", args.work, "--fourdgs", args.fourdgs,
                      "--config", base, "--name", "tides_adaptive", "--device", args.device])
             info = json.load(open(full_info))
             meta = json.load(open(os.path.join(args.work, "tides_meta.json")))
@@ -51,12 +59,12 @@ def main():
         if key == "full" and os.path.exists(os.path.join(args.work, "events", "tides_adaptive.h5")):
             names.append(name)
             continue
-        run([sys.executable, os.path.join(HERE, "simulate.py"), "--work", args.work, "--fourdgs", args.fourdgs,
+        run_with_config([sys.executable, os.path.join(HERE, "simulate.py"), "--work", args.work, "--fourdgs", args.fourdgs,
              "--config", base, "--name", name, "--device", args.device, "--set", *overrides] if overrides else
             [sys.executable, os.path.join(HERE, "simulate.py"), "--work", args.work, "--fourdgs", args.fourdgs,
              "--config", base, "--name", name, "--device", args.device])
         names.append(name)
-    run([sys.executable, os.path.join(HERE, "evaluate.py"), "--work", args.work, "--fourdgs", args.fourdgs,
+    run_with_config([sys.executable, os.path.join(HERE, "evaluate.py"), "--work", args.work, "--fourdgs", args.fourdgs,
          "--device", args.device, "--methods", *names])
 
 

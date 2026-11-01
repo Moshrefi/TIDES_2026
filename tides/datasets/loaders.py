@@ -116,9 +116,11 @@ def load_npy_layout(root: str, seq: str, dataset: str = "npy") -> Sequence:
                     notes=f"npy layout; events assumed aligned to frames; event time scale {scale}; align.yaml={align}")
 
 
-def load_eds(root: str, seq: str, gt_pose_frame: str = "rgb") -> Sequence:
+def load_eds(root: str, seq: str, gt_pose_frame: str = "rgb", calib_path: str | None = None) -> Sequence:
     import h5py
 
+    if gt_pose_frame not in ("rgb", "event"):
+        raise ValueError("gt_pose_frame must be rgb or event")
     d = os.path.join(root, seq)
     if os.path.exists(os.path.join(d, "frame_ts.npy")) and os.path.exists(os.path.join(d, "ev_t.npy")):
         s = load_npy_layout(root, seq, dataset="eds")
@@ -142,17 +144,31 @@ def load_eds(root: str, seq: str, gt_pose_frame: str = "rgb") -> Sequence:
     calib_cands = [os.path.join(d, "calib.yaml"), os.path.join(root, "calib.yaml")]
     for base in (d, root, os.path.dirname(os.path.abspath(root))):
         calib_cands += sorted(glob.glob(os.path.join(base, "*camchain*.yaml")) + glob.glob(os.path.join(base, "*calib*", "*camchain*.yaml")))
-    if os.environ.get("TIDES_EDS_CALIB"):
-        calib_cands.insert(0, os.environ["TIDES_EDS_CALIB"])
-    calib_path = next((p for p in calib_cands if os.path.exists(p)), None)
+        calib_cands += sorted(glob.glob(os.path.join(base, "calib", "00_calib", "*camchain*.yaml")))
+    explicit = calib_path or os.environ.get("TIDES_EDS_CALIB")
+    if explicit:
+        if not os.path.isfile(explicit):
+            raise FileNotFoundError(f"EDS calibration explicitly selected but missing: {explicit}")
+        calib_path = os.path.abspath(explicit)
+    else:
+        found = sorted({os.path.realpath(p) for p in calib_cands if os.path.isfile(p)})
+        if len(found) > 1:
+            raise ValueError(f"Ambiguous EDS calibration; pass calib_path / --calib explicitly: {found}")
+        calib_path = found[0] if found else None
     if calib_path:
         print(f"[eds] calibration: {calib_path}")
     rgb = ev_cal = None
     T = np.eye(4)
-    if calib_path and yaml:
+    if calib_path and yaml is None:
+        raise ImportError("Reading EDS calibration requires PyYAML")
+    if calib_path:
         with open(calib_path) as f:
             c = yaml.safe_load(f)
         def cam(cc):
+            if cc.get("camera_model", "pinhole") != "pinhole":
+                raise ValueError("Only pinhole EDS calibration is supported")
+            if cc.get("distortion_model", "radtan") not in ("radtan", "equidistant"):
+                raise ValueError("Unsupported EDS distortion_model")
             fx, fy, cx, cy = cc["intrinsics"]
             W, H = cc["resolution"]
             model = "equidistant" if cc.get("distortion_model", "radtan") == "equidistant" else "radtan"
@@ -161,6 +177,15 @@ def load_eds(root: str, seq: str, gt_pose_frame: str = "rgb") -> Sequence:
         ev_cal = cam(c["cam1"])
         if "T_cn_cnm1" in c["cam1"]:
             T = np.array(c["cam1"]["T_cn_cnm1"], float)  # cam0 -> cam1
+        else:
+            raise ValueError("EDS cam1 calibration is missing T_cn_cnm1 (RGB -> event)")
+        if (T.shape != (4, 4) or not np.isfinite(T).all()
+                or not np.allclose(T[3], [0, 0, 0, 1])
+                or not np.allclose(T[:3, :3].T @ T[:3, :3], np.eye(3), atol=1e-5)
+                or not np.isclose(np.linalg.det(T[:3, :3]), 1, atol=1e-5)):
+            raise ValueError("EDS T_cn_cnm1 must be a rigid 4x4 transform")
+    if gt_pose_frame == "event" and calib_path is None:
+        raise ValueError("Converting event GT poses to RGB requires calibration")
 
     gt = None
     gt_path = os.path.join(d, "stamped_groundtruth.txt")
@@ -194,7 +219,7 @@ def load_eds(root: str, seq: str, gt_pose_frame: str = "rgb") -> Sequence:
 
     shape = (K_ev.height, K_ev.width) if K_ev else None
     return Sequence("eds", seq, frames, ft - t_origin, t_origin, rgb, ev_cal, T, gt, loader, shape,
-                    notes=f"GT poses interpreted as {gt_pose_frame} camera")
+                    notes=f"GT poses interpreted as {gt_pose_frame} camera", calibration_path=calib_path)
 
 
 # ============================================================================
