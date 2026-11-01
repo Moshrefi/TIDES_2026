@@ -21,6 +21,7 @@ Tangent modes:
 from __future__ import annotations
 
 from dataclasses import dataclass
+import warnings
 
 import torch
 
@@ -71,6 +72,7 @@ class TangentRenderer:
         self.chunk = chunk
         self.fd_h = fd_h
         self.num_queries = 0
+        self._warned_no_time_grad = False
 
     # -- per-Gaussian screen-space primitives as a function of time ----------
     def _project(self, t_cam: torch.Tensor, t_scene_vec: torch.Tensor, shared: bool = False):
@@ -119,14 +121,27 @@ class TangentRenderer:
         tv = tt.detach().reshape(()).expand(n).clone().requires_grad_(True)
         with torch.enable_grad():
             out = self._project(tv, self.time_map(tv))
+            # Frozen opacity / degree-zero SH colour can be genuine constants.
+            # allow_unused handles an unused input, not an output without grad_fn.
+            if not any(out[k].requires_grad for k in CONTINUOUS_KEYS) and not self._warned_no_time_grad:
+                warnings.warn(
+                    "All reverse-mode projection outputs are detached from autograd. "
+                    "Time derivatives will be zero; verify that the scene/camera are static "
+                    "and no time-dependent computation was accidentally detached.",
+                    RuntimeWarning, stacklevel=2,
+                )
+                self._warned_no_time_grad = True
             tang = {}
             for k in CONTINUOUS_KEYS:
                 y = out[k]
+                if not y.requires_grad:
+                    tang[k] = torch.zeros_like(y)
+                    continue
                 y2 = y.reshape(n, -1)
                 cols = []
                 for j in range(y2.shape[1]):
                     (g,) = torch.autograd.grad(y2[:, j].sum(), tv, retain_graph=True, allow_unused=True)
-                    cols.append(torch.zeros(n, device=tv.device) if g is None else g)
+                    cols.append(torch.zeros_like(tv) if g is None else g)
                 tang[k] = torch.stack(cols, -1).reshape(y.shape)
         proj = {k: (v.detach() if torch.is_tensor(v) else v) for k, v in out.items()}
         return proj, tang
