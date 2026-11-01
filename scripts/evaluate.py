@@ -21,13 +21,13 @@ from tides.metrics import chamfer_st, fano_error, ig_nll, isi_spike_ratio, same_
 from tides.workdir import load_meta  # noqa: E402
 
 
-def estimate_speed(work, fourdgs, fourdgs_config, device, n=8):
+def estimate_speed(work, fourdgs, fourdgs_config, device, n=8, tangent_mode="reverse"):
     """Median screen-space speed (px/s) of visible Gaussians: the Chamfer 'v'."""
     import torch
 
     from tides.workdir import build_renderer
 
-    r, meta = build_renderer(work, fourdgs, config=fourdgs_config, device=device)
+    r, meta = build_renderer(work, fourdgs, config=fourdgs_config, device=device, mode=tangent_mode)
     t0, t1 = meta["t_range"]
     speeds = []
     for t in np.linspace(t0, t1, n + 2)[1:-1]:
@@ -53,6 +53,8 @@ def main():
     ap.add_argument("--fourdgs", default=None, help="needed only for chamfer.v = auto")
     ap.add_argument("--fourdgs-config", default=os.path.join(os.path.dirname(__file__), "..", "configs", "4dgs", "tides_default.py"))
     ap.add_argument("--device", default="cuda")
+    ap.add_argument("--tangent-mode", choices=["forward", "reverse"], default="reverse",
+                    help="AD mode for automatic Chamfer speed; reverse supports upstream grid_sample")
     ap.add_argument("--calib", default=None, help="explicit EDS calibration, also supports legacy metadata")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
@@ -83,7 +85,7 @@ def main():
     if v == "auto":
         if "speed_px_s" not in results:
             assert args.fourdgs, "chamfer.v=auto needs --fourdgs (or set chamfer.v=<px/s>)"
-            results["speed_px_s"] = estimate_speed(args.work, args.fourdgs, args.fourdgs_config, args.device)
+            results["speed_px_s"] = estimate_speed(args.work, args.fourdgs, args.fourdgs_config, args.device, tangent_mode=args.tangent_mode)
         v = results["speed_px_s"]
     print(f"[evaluate] chamfer v = {v:.1f} px/s")
 
@@ -125,6 +127,7 @@ def main():
                                n=int(len(real["t"])))
     results["dataset"], results["sequence"] = meta["dataset"], meta["sequence"]
     results["metric_config"] = cfg
+    results["speed_tangent_mode"] = args.tangent_mode
     results["preparation_sha256"] = prep_hash
     results["calibration_path"] = seq.calibration_path
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)

@@ -30,10 +30,11 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--only", nargs="*", default=None)
     ap.add_argument("--device", default="cuda")
+    ap.add_argument("--tangent-mode", choices=["forward", "reverse"], default="reverse")
     args = ap.parse_args()
     original_run = run
     def run_with_config(cmd):
-        cmd = list(cmd) + ["--fourdgs-config", args.fourdgs_config]
+        cmd = list(cmd) + ["--fourdgs-config", args.fourdgs_config, "--tangent-mode", args.tangent_mode]
         if cmd[1].endswith("simulate.py"):
             cmd += ["--seed", str(args.seed)]
         original_run(cmd)

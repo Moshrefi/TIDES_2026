@@ -82,6 +82,9 @@ THIRD_PARTY = Path(os.environ.get('TIDES_THIRD_PARTY', str(ROOT/'third_party')))
 T_START, T_END = float(os.environ.get('TIDES_T_START', '0')), float(os.environ.get('TIDES_T_END', '1.5'))
 SEED = int(os.environ.get('TIDES_SEED', '0'))  # preparation + TIDES; upstream training has its own seeding
 GT_POSE_FRAME = os.environ.get('TIDES_GT_POSE_FRAME', 'rgb')
+TANGENT_MODE = os.environ.get('TIDES_TANGENT_MODE', 'reverse')
+if TANGENT_MODE not in {'forward','reverse'}:
+    raise ValueError('TIDES_TANGENT_MODE must be forward or reverse')
 STAGES = {s.strip() for s in os.environ.get('TIDES_RUN_STAGES', '').split(',') if s.strip()}
 ALLOWED = {'inspect','prepare','audit','train','tides','baselines','evaluate','ablations','tables','record'}
 if STAGES - ALLOWED:
@@ -91,7 +94,7 @@ if GT_POSE_FRAME not in {'rgb','event'} or not T_START < T_END:
 os.environ['TIDES_EDS_CALIB'] = str(EDS_CALIB)  # also used by evaluation of legacy prepared scenes
 METHODS = ['esim','v2e','iebcs','dvs_voltmeter','tides_10x','tides_adaptive']
 print(json.dumps({'EDS':str(EDS_ROOT),'calibration':str(EDS_CALIB),'work':str(WORK),
-                  '4DGS':str(FOURDGS),'stages':sorted(STAGES)}, indent=2))
+                  '4DGS':str(FOURDGS),'tangent_mode':TANGENT_MODE,'stages':sorted(STAGES)}, indent=2))
 ''')
 cell('markdown', '''
 ## 2. Inspect, prepare, then audit geometry and time
@@ -169,7 +172,11 @@ if 'train' in STAGES:
 cell('markdown', '''
 ## 4. Simulation, baselines, evaluation, ablations (explicit opt-in)
 
-All methods reuse the same trained scene and actual prepared interval. Simulation can
+All methods reuse the same trained scene and actual prepared interval.
+The notebook defaults to exact reverse-mode time derivatives because upstream 4DGS
+uses grid_sample, which may lack forward AD in the installed PyTorch. This is not
+finite differencing and needs no retraining. Set TIDES_TANGENT_MODE=forward only in
+a supported environment. The same mode is used for Chamfer speed estimation. Simulation can
 also be expensive. Baseline adapters need their own upstream installs; ESIM can fall
 back to the repository implementation (inspect its event JSON before claiming official
 ESIM results). Metric assumptions include excess IG-NLL and diagonal-normalized Chamfer.
@@ -177,11 +184,12 @@ Legacy metric files without provenance are not silently merged: use a fresh outp
 ''')
 cell('code', '''
 COMMON = ['--work',WORK,'--fourdgs',FOURDGS,'--fourdgs-config',CFG4D]
+TANGENT_ARGS = ['--tangent-mode',TANGENT_MODE]
 if STAGES & {'tides','baselines','evaluate','ablations'}:
     print('Reusing checkpoint:', checkpoint())
 if 'tides' in STAGES:
     for name in ['tides_10x','tides_adaptive']:
-        run(sys.executable,ROOT/'scripts'/'simulate.py',*COMMON,'--config',ROOT/'configs'/(name+'.yaml'),
+        run(sys.executable,ROOT/'scripts'/'simulate.py',*COMMON,*TANGENT_ARGS,'--config',ROOT/'configs'/(name+'.yaml'),
             '--name',name,'--seed',SEED)
 if 'baselines' in STAGES:
     run(sys.executable,ROOT/'scripts'/'run_baselines.py',*COMMON,'--third-party',THIRD_PARTY,
@@ -194,9 +202,9 @@ if 'evaluate' in STAGES:
     available = [m for m in METHODS if m not in missing]
     if not available:
         raise FileNotFoundError('No simulated event streams')
-    run(sys.executable,ROOT/'scripts'/'evaluate.py',*COMMON,'--calib',EDS_CALIB,'--out',METRICS,'--methods',*available)
+    run(sys.executable,ROOT/'scripts'/'evaluate.py',*COMMON,*TANGENT_ARGS,'--calib',EDS_CALIB,'--out',METRICS,'--methods',*available)
 if 'ablations' in STAGES:
-    run(sys.executable,ROOT/'scripts'/'run_ablations.py',*COMMON,'--seed',SEED)
+    run(sys.executable,ROOT/'scripts'/'run_ablations.py',*COMMON,*TANGENT_ARGS,'--seed',SEED)
 ''')
 cell('markdown', '''
 ## 5. Results, comparison and reproducibility record
@@ -243,7 +251,7 @@ if 'record' in STAGES:
     manifest = {'sequence':SEQUENCE,'root':str(EDS_ROOT),'calibration':str(EDS_CALIB),
         'calibration_sha256':sha(EDS_CALIB) if EDS_CALIB.is_file() else None,
         'work':str(WORK),'requested_range':[T_START,T_END],'gt_pose_frame':GT_POSE_FRAME,
-        'preparation_and_tides_seed':SEED,'training_seed':'upstream-controlled; inspect recorded source revision',
+        'tangent_mode':TANGENT_MODE,'preparation_and_tides_seed':SEED,'training_seed':'upstream-controlled; inspect recorded source revision',
         'tides_revision':git('rev-parse','HEAD'),'tides_dirty':git('status','--porcelain'),
         'fourdgs_revision':git('rev-parse','HEAD',path=FOURDGS),
         'fourdgs_dirty':git('status','--porcelain',path=FOURDGS),'python':sys.version,
